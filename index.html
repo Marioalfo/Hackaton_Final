@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorador de Datos COVID-19</title>
+    <meta name="description" content="Hackatón JS - Explorador de datos COVID-19 con disease.sh">
+
+    <!-- Tailwind CSS por CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef6ff',
+                            100: '#d9ecff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chart.js por CDN (Nivel Oro: gráfico real) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+    <!-- Estilos propios (animaciones, scrollbar, detalles finos) -->
+    <link rel="stylesheet" href="./assets/style.css">
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 min-h-screen flex flex-col">
+
+<!-- ========================= HEADER ========================= -->
+<header class="bg-white/80 dark:bg-slate-800/80 backdrop-blur sticky top-0 z-30 border-b border-slate-200 dark:border-slate-700">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-brand-600 flex items-center justify-center text-white text-xl">🦠</div>
+            <div>
+                <h1 class="text-lg md:text-xl font-bold leading-tight">Explorador de Datos COVID-19</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Hackatón JavaScript Avanzado · por Felipe
+                    Cuevas</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span id="last-updated" class="hidden md:inline-block text-xs text-slate-500 dark:text-slate-400"></span>
+            <!-- Botón Tema Claro/Oscuro -->
+            <button id="theme-toggle" aria-label="Cambiar tema"
+                    class="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center hover:scale-105 transition-transform">
+                <span id="theme-icon">🌙</span>
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- ========================= MAIN ========================= -->
+<main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-12">
+
+    <!-- ---------- Loading & Error global ---------- -->
+    <div id="loading-state" class="flex flex-col items-center justify-center py-20 gap-4">
+        <div class="h-14 w-14 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin"></div>
+        <p class="text-slate-500 dark:text-slate-400">Conectando con disease.sh…</p>
+    </div>
+
+    <div id="error-state"
+         class="hidden bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-6 text-center">
+        <p class="font-semibold mb-1">😕 No pudimos cargar los datos</p>
+        <p id="error-message" class="text-sm"></p>
+        <button id="retry-btn"
+                class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition">Reintentar
+        </button>
+    </div>
+
+    <!-- Contenido real, oculto hasta que carguen los datos -->
+    <div id="app-content" class="hidden space-y-12">
+
+        <!-- ---------- SECTION: Estadísticas Globales ---------- -->
+        <section id="global-stats" aria-labelledby="global-stats-title">
+            <h2 id="global-stats-title" class="text-xl font-bold mb-4">🌍 Estadísticas Globales</h2>
+            <div id="global-cards" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <!-- Las cards se inyectan dinámicamente desde script.js -->
+            </div>
+        </section>
+
+        <!-- ---------- SECTION: Buscador / Filtro interactivo ---------- -->
+        <section aria-labelledby="filter-title">
+            <h2 id="filter-title" class="text-xl font-bold mb-4">🔎 Buscar país o filtrar por continente</h2>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 grid md:grid-cols-2 gap-4">
+                <div>
+                    <label for="country-search" class="text-sm font-medium block mb-1">Buscar país</label>
+                    <input id="country-search" type="text" placeholder="Ej: Chile, Brazil, Japan..."
+                           class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                    <label for="continent-select" class="text-sm font-medium block mb-1">Filtrar por continente</label>
+                    <select id="continent-select"
+                            class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <option value="all">Todos los continentes</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- ---------- SECTION: Ranking de países (tabla + barras) ---------- -->
+        <section aria-labelledby="ranking-title">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="ranking-title" class="text-xl font-bold">📊 Ranking de países por casos totales</h2>
+                <span id="ranking-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
+            </div>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <ul id="countries-list" class="divide-y divide-slate-100 dark:divide-slate-700">
+                    <!-- Filas inyectadas dinámicamente -->
+                </ul>
+            </div>
+        </section>
+
+        <!-- ---------- SECTION: Gráfico Chart.js (Nivel Oro) ---------- -->
+        <section aria-labelledby="chart-title">
+            <h2 id="chart-title" class="text-xl font-bold mb-4">📈 Top 10 países — Casos vs Muertes</h2>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-700">
+                <canvas id="covid-chart" height="110"></canvas>
+            </div>
+        </section>
+
+        <!-- ---------- ARTICLE: Continentes ---------- -->
+        <section aria-labelledby="continent-title">
+            <h2 id="continent-title" class="text-xl font-bold mb-4">🗺️ Comparativa entre continentes</h2>
+            <div id="continent-cards" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Cards de continentes inyectadas dinámicamente -->
+            </div>
+        </section>
+
+        <!-- ---------- SECTION: Galería de la Pandemia (Nivel Oro) ---------- -->
+        <section aria-labelledby="gallery-title">
+            <h2 id="gallery-title" class="text-xl font-bold mb-4">📸 La Pandemia en Imágenes</h2>
+            <div id="gallery-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://images.unsplash.com/photo-1584634731339-252c581abfc5?auto=format&fit=crop&w=800&q=80"
+                         alt="Personal médico con equipo de protección en un hospital"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">Personal de salud en primera
+                        línea
+                    </figcaption>
+                </figure>
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://static01.nyt.com/images/2025/03/07/multimedia/00covid-5years-photos-fader-STILL-hbqm/00covid-5years-photos-fader-STILL-hbqm-jumbo.jpg"
+                         alt="Calle vacía durante la cuarentena"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">Ciudades vacías durante la
+                        cuarentena
+                    </figcaption>
+                </figure>
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://www.fda.gov/files/styles/main_image_medium/public/COVID%20testing%20policy_1600x900_0.png?itok=YEuk4uQW"
+                         alt="Aplicación de una dosis de vacuna"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">Testeos de Antigenos</figcaption>
+                </figure>
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3UiukEOHdcXapTdWCPq2TJ-hoS_kqtqd7YaGEQ7e-yLNR5-QWTUo0nL3m&s=10"
+                         alt="Persona usando mascarilla en la vía pública"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">El uso de mascarillas como nueva
+                        norma
+                    </figcaption>
+                </figure>
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://global.unitednations.entermediadb.net/assets/mediadb/services/module/asset/downloads/preset/Libraries/Production+Library/06-04-2020-lung-transplantation.jpg/image770x420cropped.jpg"
+                         alt="Sala de hospital con equipos médicos"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">Hospitales al límite de su
+                        capacidad
+                    </figcaption>
+                </figure>
+
+                <figure class="scroll-reveal overflow-hidden rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQEqQj0iRLdKOSZItqj2IsRdUuOE0tZ5rKQLdDYOAk9RNN6wgz5wPKh7yu_&s=10"
+                         alt="Videollamada familiar durante el confinamiento"
+                         class="w-full h-56 object-cover" loading="lazy">
+                    <figcaption class="p-3 text-sm text-slate-500 dark:text-slate-400">Mantenerse conectados a la
+                        distancia
+                    </figcaption>
+                </figure>
+
+            </div>
+        </section>
+
+    </div>
+</main>
+
+<!-- ========================= FOOTER ========================= -->
+<footer class="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 mt-auto">
+    <div class="max-w-6xl mx-auto px-4 py-6 text-sm text-slate-500 dark:text-slate-400 flex flex-col md:flex-row items-center justify-between gap-2">
+        <p>Fuente de datos: <a href="https://disease.sh" target="_blank"
+                               class="text-brand-600 dark:text-brand-500 hover:underline">disease.sh</a> / Worldometers
+        </p>
+        <p>Proyecto Hackatón JS — Explorador de Datos COVID-19</p>
+    </div>
+</footer>
+
+<script src="./assets/script.js"></script>
+</body>
+</html>
